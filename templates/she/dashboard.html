@@ -1,0 +1,70 @@
+{% extends 'she/base.html' %}
+
+{% block content %}
+<div class="card">
+    <h2 id="welcome-msg">Welcome</h2>
+    <p style="color:#6b7280; font-size:13px; margin-top:4px" id="role-desc"></p>
+</div>
+
+<div id="menu-cards" style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap:16px">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    requireAuth();
+
+    const user = getUser();
+    const role = user.role;
+
+    document.getElementById('welcome-msg').textContent = `Welcome, ${user.full_name}`;
+
+    const roleDescriptions = {
+        'foreman':          'You can create and manage work permit requests.',
+        'she_officer':      'You can create HIRA assessments and endorse work permits.',
+        'she_coordinator':  'You can review and approve HIRA risk assessments.',
+        'site_manager':     'You can approve and manage work permits across your sites.',
+        'project_manager':  'You can approve and oversee all permits and assessments.',
+    };
+    document.getElementById('role-desc').textContent = roleDescriptions[role] || '';
+
+    // define menu items per role
+    const menus = {
+        foreman: [
+            { label: 'My Work Permits', desc: 'View and manage your permit requests', href: '/ptw/', color: '#1a3a2a' },
+            { label: 'Submit New Permit', desc: 'Create a new work permit request', href: '/ptw/create/', color: '#97bc62' },
+        ],
+        she_officer: [
+            { label: 'HIRA Documents', desc: 'View all risk assessments', href: '/hira/', color: '#1a3a2a' },
+            { label: 'Create HIRA', desc: 'Start a new risk assessment', href: '/hira/create/', color: '#97bc62' },
+            { label: 'Pending Permits', desc: 'Review submitted work permits', href: '/ptw/', color: '#1a3a2a' },
+        ],
+        she_coordinator: [
+            { label: 'HIRA Review Queue', desc: 'Approve or reject submitted assessments', href: '/hira/', color: '#1a3a2a' },
+            { label: 'All Permits', desc: 'View all work permits', href: '/ptw/', color: '#2c5f2d' },
+        ],
+        site_manager: [
+            { label: 'Permit Approval Queue', desc: 'Approve endorsed work permits', href: '/ptw/', color: '#1a3a2a' },
+            { label: 'All HIRA Documents', desc: 'View risk assessments', href: '/hira/', color: '#2c5f2d' },
+        ],
+        project_manager: [
+            { label: 'Permit Approval Queue', desc: 'Approve endorsed work permits', href: '/ptw/', color: '#1a3a2a' },
+            { label: 'All HIRA Documents', desc: 'View all risk assessments', href: '/hira/', color: '#2c5f2d' },
+            { label: 'All Work Permits', desc: 'Full permit overview', href: '/ptw/', color: '#97bc62' },
+        ],
+    };
+
+    const cards = menus[role] || [];
+    const container = document.getElementById('menu-cards');
+
+    cards.forEach(item => {
+        container.innerHTML += `
+            <div class="card" style="cursor:pointer; border-left: 4px solid ${item.color}"
+                 onclick="window.location.href='${item.href}'">
+                <h2 style="font-size:15px; color:${item.color}">${item.label}</h2>
+                <p style="font-size:12px; color:#6b7280; margin-top:6px">${item.desc}</p>
+            </div>
+        `;
+    });
+</script>
+{% endblock %}

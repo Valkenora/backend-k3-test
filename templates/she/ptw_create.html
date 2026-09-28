@@ -1,0 +1,336 @@
+{% extends 'she/base.html' %}
+
+{% block content %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+        <h2>Create Work Permit Request</h2>
+        <button class="btn btn-secondary" onclick="window.location.href='/ptw/'">← Back</button>
+    </div>
+</div>
+
+<div class="card">
+    <div id="error-msg" class="alert alert-error" style="display:none"></div>
+    <div id="success-msg" class="alert alert-success" style="display:none"></div>
+
+    <h3 style="font-size:14px; color:#1a3a2a; margin-bottom:16px">Permit Type</h3>
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:24px">
+        <div id="type_working_at_height" class="permit-type-card" onclick="selectType('working_at_height')"
+             style="border:2px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center; cursor:pointer">
+            <div style="font-size:24px">⬆️</div>
+            <div style="font-size:11px; font-weight:bold; margin-top:6px">Working at Height</div>
+            <div style="font-size:10px; color:#6b7280">Ready</div>
+        </div>
+        <div style="border:2px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center;
+                    opacity:0.4; cursor:not-allowed">
+            <div style="font-size:24px">🔒</div>
+            <div style="font-size:11px; font-weight:bold; margin-top:6px">Confined Space</div>
+            <div style="font-size:10px; color:#6b7280">Coming Soon</div>
+        </div>
+        <div style="border:2px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center;
+                    opacity:0.4; cursor:not-allowed">
+            <div style="font-size:24px">🔥</div>
+            <div style="font-size:11px; font-weight:bold; margin-top:6px">Fire / Explosive</div>
+            <div style="font-size:10px; color:#6b7280">Coming Soon</div>
+        </div>
+        <div style="border:2px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center;
+                    opacity:0.4; cursor:not-allowed">
+            <div style="font-size:24px">🚛</div>
+            <div style="font-size:11px; font-weight:bold; margin-top:6px">Lifting</div>
+            <div style="font-size:10px; color:#6b7280">Coming Soon</div>
+        </div>
+        <div style="border:2px solid #e5e7eb; border-radius:8px; padding:12px; text-align:center;
+                    opacity:0.4; cursor:not-allowed">
+            <div style="font-size:24px">🏗️</div>
+            <div style="font-size:11px; font-weight:bold; margin-top:6px">Tower Crane</div>
+            <div style="font-size:10px; color:#6b7280">Coming Soon</div>
+        </div>
+    </div>
+
+    <div id="form-section" style="display:none">
+        <h3 style="font-size:14px; color:#1a3a2a; margin-bottom:16px">Work Details</h3>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+            <div class="form-group">
+                <label>Project</label>
+                <select id="project" onchange="loadHiraActivities()">
+                    <option value="">— Select Project —</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>HIRA Activity <span style="color:#dc2626">*</span></label>
+                <select id="hira_activity" onchange="fillFromHira()">
+                    <option value="">— Select Project First —</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Document Number</label>
+                <input type="text" id="document_number" value="F.01/P.10/SHE/KPT" readonly
+                       style="background:#f3f4f6">
+            </div>
+            <div class="form-group">
+                <label>Work Date</label>
+                <input type="date" id="work_date">
+            </div>
+            <div class="form-group">
+                <label>Work Location</label>
+                <input type="text" id="work_location" placeholder="e.g. Workshop - Area Penyimpanan">
+            </div>
+            <div class="form-group">
+                <label>Work Description</label>
+                <input type="text" id="work_description" placeholder="e.g. Penataan dan Penumpukan">
+            </div>
+            <div class="form-group">
+                <label>Equipment Used</label>
+                <input type="text" id="equipment_used" placeholder="e.g. Tangga, Safety Harness">
+            </div>
+            <div class="form-group">
+                <label>Person in Charge</label>
+                <input type="text" id="person_in_charge" placeholder="e.g. Budi Santoso">
+            </div>
+            <div class="form-group">
+                <label>Work Start</label>
+                <input type="time" id="work_start">
+            </div>
+            <div class="form-group">
+                <label>Work End</label>
+                <input type="time" id="work_end">
+            </div>
+            <div class="form-group">
+                <label>Number of Workers</label>
+                <input type="number" id="worker_count" min="1" placeholder="e.g. 4">
+            </div>
+        </div>
+
+        <h3 style="font-size:14px; color:#1a3a2a; margin:20px 0 12px">
+            Safety Area Checklist
+        </h3>
+        <div style="display:flex; gap:24px; margin-bottom:20px">
+            <label style="font-size:13px">
+                <input type="checkbox" id="area_A"> (A) Area Perifer (Pinggiran)
+            </label>
+            <label style="font-size:13px">
+                <input type="checkbox" id="area_B"> (B) Area Pit Lift / Tangga
+            </label>
+            <label style="font-size:13px">
+                <input type="checkbox" id="area_C"> (C) Pekerjaan perbaikan/perawatan di ketinggian
+            </label>
+        </div>
+
+        <h3 style="font-size:14px; color:#1a3a2a; margin-bottom:12px">
+            Safety Checklist (Ya/Tidak)
+        </h3>
+        <div id="safety-checklist" style="margin-bottom:20px"></div>
+
+        <h3 style="font-size:14px; color:#1a3a2a; margin-bottom:12px">
+            Alat Pelindung Diri (PPE)
+        </h3>
+        <div style="display:flex; gap:24px; flex-wrap:wrap; margin-bottom:24px">
+            <label style="font-size:13px"><input type="checkbox" id="ppe_sarung_tangan"> Sarung Tangan</label>
+            <label style="font-size:13px"><input type="checkbox" id="ppe_safety_belt"> Safety Belt</label>
+            <label style="font-size:13px"><input type="checkbox" id="ppe_body_harness"> Body Harness</label>
+            <label style="font-size:13px"><input type="checkbox" id="ppe_sepatu"> Sepatu</label>
+        </div>
+
+        <button class="btn btn-primary" onclick="createPermit()">
+            Submit Permit Request
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    requireAuth();
+
+    if (getUser().role !== 'foreman') {
+        alert('Access denied — Foreman only');
+        window.location.href = '/dashboard/';
+    }
+
+    let selectedType = null;
+
+    const checklistItems = {
+        working_at_height: [
+            'Apakah SPK atau kontrak pekerjaan sudah ditandatangani?',
+            'Apakah penanggungjawab pekerjaan sudah ditentukan?',
+            'Apakah cuaca cerah dan tidak mendung?',
+            'Apakah pekerja sudah memakai dan mempersiapkan APD yang sesuai?',
+            'Apakah pekerja sudah mendapatkan pengarahan K3 (Safety Induction)?',
+            'Apakah pekerja mempunyai pengalaman dan kompeten melakukan pekerjaan ini?',
+            'Apakah pekerja tidak menderita penyakit ayan, rabun senja, atau gangguan keseimbangan?',
+            'Apakah prosedur keadaan darurat sudah dimengerti?',
+            'Apakah rambu-rambu yang diperlukan sudah terpasang?',
+            'Apakah safety line, safety net, dan safety deck sudah terpasang?',
+            'Apakah climbing sudah terpasang? (untuk pekerjaan corewall)',
+            'Apakah area pekerjaan sudah dibersihkan dan area di bawahnya bebas dari area kerja dan lalu lintas orang?',
+            'Apakah peralatan sudah diinspeksi dan layak pakai?',
+            'Apakah bahan kimia B3 kemasannya memadai dan dilengkapi MSDS?',
+        ]
+    };
+
+    function selectType(type) {
+        selectedType = type;
+        document.querySelectorAll('.permit-type-card').forEach(el => {
+            el.style.borderColor = '#e5e7eb';
+            el.style.background = 'white';
+        });
+        const selected = document.getElementById(`type_${type}`);
+        selected.style.borderColor = '#1a3a2a';
+        selected.style.background = '#f0fdf4';
+        document.getElementById('form-section').style.display = 'block';
+        renderChecklist(type);
+    }
+
+    function renderChecklist(type) {
+        const items = checklistItems[type] || [];
+        const container = document.getElementById('safety-checklist');
+        container.innerHTML = items.map((item, i) => `
+            <div style="display:flex; align-items:flex-start; gap:12px; padding:8px 0;
+                        border-bottom:1px solid #f3f4f6">
+                <span style="min-width:20px; font-size:12px; color:#6b7280">${i+1}.</span>
+                <span style="flex:1; font-size:12px">${item}</span>
+                <label style="font-size:12px; white-space:nowrap">
+                    <input type="radio" name="check_${i+1}" value="true"> Ya
+                </label>
+                <label style="font-size:12px; white-space:nowrap">
+                    <input type="radio" name="check_${i+1}" value="false" checked> Tidak
+                </label>
+            </div>
+        `).join('');
+    }
+
+    async function loadProjects() {
+        const res = await apiFetch('/projects/');
+        if (res.ok) {
+            const data = await res.json();
+            const select = document.getElementById('project');
+            data.forEach(p => {
+                select.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+            });
+        }
+    }
+
+    async function loadHiraActivities() {
+        const projectId = document.getElementById('project').value;
+        const select = document.getElementById('hira_activity');
+        select.innerHTML = '<option value="">Loading...</option>';
+
+        const res = await apiFetch('/hira/documents/');
+        if (res.ok) {
+            const docs = await res.json();
+            const approved = docs.filter(d =>
+                d.status === 'approved' &&
+                (!projectId || d.project == projectId)
+            );
+
+            if (approved.length === 0) {
+                select.innerHTML = '<option value="">No approved HIRA found for this project</option>';
+                return;
+            }
+
+            select.innerHTML = '<option value="">— Select HIRA Activity —</option>';
+            
+            // store activity data for auto-fill
+            window.hiraActivityData = {};
+
+            for (const doc of approved) {
+                const groupRes = await apiFetch(`/hira/documents/${doc.id}/`);
+                if (groupRes.ok) {
+                    const fullDoc = await groupRes.json();
+                    fullDoc.groups.forEach(group => {
+                        group.activities.forEach(act => {
+                            // store doc number and location per activity id
+                            window.hiraActivityData[act.id] = {
+                                document_number: fullDoc.document_number,
+                                work_location: group.location_function,
+                                work_description: act.activity_name,
+                            };
+                            select.innerHTML += `
+                                <option value="${act.id}">
+                                    [${doc.work_package}] ${group.location_function}
+                                    — ${act.activity_name}
+                                    (Residual Rt: ${act.residual_score} ${act.residual_level})
+                                </option>
+                            `;
+                        });
+                    });
+                }
+            }
+        }
+    }
+
+    function fillFromHira() {
+        const actId = document.getElementById('hira_activity').value;
+        if (!actId || !window.hiraActivityData) return;
+
+        const data = window.hiraActivityData[actId];
+        if (!data) return;
+
+        document.getElementById('document_number').value = data.document_number;
+        document.getElementById('work_location').value = data.work_location;
+        document.getElementById('work_description').value = data.work_description;
+    }
+
+    async function createPermit() {
+        const checklist = {};
+        const items = checklistItems[selectedType] || [];
+        items.forEach((_, i) => {
+            const selected = document.querySelector(`input[name="check_${i+1}"]:checked`);
+            checklist[String(i+1)] = selected ? selected.value === 'true' : false;
+        });
+
+        const payload = {
+            project: document.getElementById('project').value || null,
+            hira_activity: document.getElementById('hira_activity').value,
+            permit_type: selectedType,
+            document_number: document.getElementById('document_number').value,
+            work_date: document.getElementById('work_date').value,
+            work_location: document.getElementById('work_location').value,
+            work_description: document.getElementById('work_description').value,
+            equipment_used: document.getElementById('equipment_used').value,
+            work_start: document.getElementById('work_start').value,
+            work_end: document.getElementById('work_end').value,
+            person_in_charge: document.getElementById('person_in_charge').value,
+            worker_count: parseInt(document.getElementById('worker_count').value),
+            safety_area: {
+                A: document.getElementById('area_A').checked,
+                B: document.getElementById('area_B').checked,
+                C: document.getElementById('area_C').checked,
+            },
+            safety_checklist: checklist,
+            ppe_checklist: {
+                sarung_tangan: document.getElementById('ppe_sarung_tangan').checked,
+                safety_belt: document.getElementById('ppe_safety_belt').checked,
+                body_harness: document.getElementById('ppe_body_harness').checked,
+                sepatu: document.getElementById('ppe_sepatu').checked,
+            }
+        };
+
+        if (!payload.hira_activity || !payload.work_date || !payload.work_location) {
+            showMsg(false, 'HIRA Activity, work date and work location are required');
+            return;
+        }
+
+        const res = await apiFetch('/ptw/', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            showMsg(true, 'Work permit created successfully');
+            setTimeout(() => window.location.href = '/ptw/', 1500);
+        } else {
+            showMsg(false, JSON.stringify(data));
+        }
+    }
+
+    function showMsg(success, msg) {
+        const el = document.getElementById(success ? 'success-msg' : 'error-msg');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 5000);
+    }
+
+    loadProjects();
+</script>
+{% endblock %}

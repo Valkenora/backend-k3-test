@@ -1,0 +1,299 @@
+{% extends 'she/base.html' %}
+
+{% block content %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+        <h2>Create HIRA Document</h2>
+        <button class="btn btn-secondary" onclick="window.location.href='/hira/'">← Back</button>
+    </div>
+</div>
+
+<div class="card">
+    <div id="error-msg" class="alert alert-error" style="display:none"></div>
+    <div id="success-msg" class="alert alert-success" style="display:none"></div>
+
+    <h3 style="font-size:14px; color:#1a3a2a; margin-bottom:16px">Document Details</h3>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+        <div class="form-group">
+            <label>Document Number</label>
+            <input type="text" id="document_number" placeholder="e.g. F.01/P.01/HSE/KPT">
+        </div>
+        <div class="form-group">
+            <label>Project</label>
+            <select id="project">
+                <option value="">— Select Project —</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>Work Package (Tahapan Pekerjaan)</label>
+            <input type="text" id="work_package" placeholder="e.g. Penyimpanan Bekisting">
+        </div>
+        <div class="form-group">
+            <label>Work Area (Area Kerja)</label>
+            <input type="text" id="work_area" placeholder="e.g. Workshop">
+        </div>
+    </div>
+
+    <button class="btn btn-primary" onclick="createHira()">Create HIRA Document</button>
+</div>
+
+<div id="hira-created" style="display:none">
+    <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+            <h3 style="font-size:14px; color:#1a3a2a">
+                Activities — <span id="group-hira-label"></span>
+            </h3>
+        </div>
+
+        <div style="margin-bottom:16px">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px">
+                <div class="form-group">
+                    <label>Location / Function (Lokasi/Proses/Fungsi)</label>
+                    <input type="text" id="location_function" placeholder="e.g. Alat Bekisting">
+                </div>
+            </div>
+            <button class="btn btn-secondary" onclick="createGroup()">+ Add Group</button>
+        </div>
+
+        <div id="groups-container"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    requireAuth();
+
+    // only SHE Officer should access this page
+    if (getUser().role !== 'she_officer') {
+        alert('Access denied — SHE Officers only');
+        window.location.href = '/dashboard/';
+    }
+
+    let currentHiraId = null;
+
+    async function loadProjects() {
+        const res = await apiFetch('/projects/');
+        if (res.ok) {
+            const data = await res.json();
+            const select = document.getElementById('project');
+            data.forEach(p => {
+                select.innerHTML += `<option value="${p.id}">${p.name}</option>`;
+            });
+        }
+    }
+
+    async function createHira() {
+        const payload = {
+            document_number: document.getElementById('document_number').value,
+            project: document.getElementById('project').value || null,
+            work_package: document.getElementById('work_package').value,
+            work_area: document.getElementById('work_area').value,
+        };
+
+        if (!payload.work_package || !payload.work_area || !payload.document_number) {
+            showMsg(false, 'Document number, work package and work area are required');
+            return;
+        }
+
+        const res = await apiFetch('/hira/documents/', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            currentHiraId = data.id;
+            document.getElementById('group-hira-label').textContent =
+                `${data.document_number} — ${data.work_package}`;
+            document.getElementById('hira-created').style.display = 'block';
+            showMsg(true, 'HIRA document created — now add activity groups below');
+        } else {
+            showMsg(false, JSON.stringify(data));
+        }
+    }
+
+    async function createGroup() {
+        const location_function = document.getElementById('location_function').value;
+        if (!location_function) {
+            showMsg(false, 'Location/Function is required');
+            return;
+        }
+
+        const res = await apiFetch('/hira/groups/', {
+            method: 'POST',
+            body: JSON.stringify({ hira_document: currentHiraId, location_function })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            document.getElementById('location_function').value = '';
+            addGroupToUI(data);
+            showMsg(true, `Group "${data.location_function}" added`);
+        } else {
+            showMsg(false, JSON.stringify(data));
+        }
+    }
+
+    function addGroupToUI(group) {
+        const container = document.getElementById('groups-container');
+        const groupDiv = document.createElement('div');
+        groupDiv.id = `group-${group.id}`;
+        groupDiv.style.cssText = 'border:1px solid #e5e7eb; border-radius:6px; padding:16px; margin-bottom:16px';
+        groupDiv.innerHTML = `
+            <h4 style="font-size:13px; color:#1a3a2a; margin-bottom:12px">
+                📍 ${group.location_function}
+            </h4>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin-bottom:10px">
+                <div class="form-group">
+                    <label>Activity Name</label>
+                    <input type="text" id="act_name_${group.id}" placeholder="e.g. Penerimaan Bekisting">
+                </div>
+                <div class="form-group">
+                    <label>Type</label>
+                    <select id="act_type_${group.id}">
+                        <option value="R">Routine (R)</option>
+                        <option value="NR">Non-Routine (NR)</option>
+                        <option value="E">Emergency (E)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Potential Hazards</label>
+                    <input type="text" id="act_hazards_${group.id}" placeholder="e.g. Terlindas truk">
+                </div>
+                <div class="form-group">
+                    <label>Risk Impact</label>
+                    <input type="text" id="act_impact_${group.id}" placeholder="e.g. Luka, Cidera">
+                </div>
+                <div class="form-group">
+                    <label>Control Category</label>
+                    <input type="text" id="act_control_cat_${group.id}" placeholder="e.g. ADM, APD">
+                </div>
+                <div class="form-group">
+                    <label>Control Measures</label>
+                    <input type="text" id="act_control_${group.id}" placeholder="e.g. Pasang rambu">
+                </div>
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:10px">
+                <div class="form-group">
+                    <label>Initial Likelihood (1-5)</label>
+                    <input type="number" id="act_il_${group.id}" min="1" max="5" placeholder="1-5"
+                        oninput="calcScore('initial', ${group.id})">
+                </div>
+                <div class="form-group">
+                    <label>Initial Severity (1-5)</label>
+                    <input type="number" id="act_is_${group.id}" min="1" max="5" placeholder="1-5"
+                        oninput="calcScore('initial', ${group.id})">
+                </div>
+                <div class="form-group">
+                    <label>Initial Score (Rt)</label>
+                    <input type="text" id="act_irt_${group.id}" readonly
+                        style="background:#f3f4f6; font-weight:bold">
+                </div>
+                <div class="form-group">
+                    <label>Initial Level</label>
+                    <input type="text" id="act_ilvl_${group.id}" readonly
+                        style="background:#f3f4f6; font-weight:bold">
+                </div>
+                <div class="form-group">
+                    <label>Residual Likelihood (1-5)</label>
+                    <input type="number" id="act_rl_${group.id}" min="1" max="5" placeholder="1-5"
+                        oninput="calcScore('residual', ${group.id})">
+                </div>
+                <div class="form-group">
+                    <label>Residual Severity (1-5)</label>
+                    <input type="number" id="act_rs_${group.id}" min="1" max="5" placeholder="1-5"
+                        oninput="calcScore('residual', ${group.id})">
+                </div>
+                <div class="form-group">
+                    <label>Residual Score (Rt)</label>
+                    <input type="text" id="act_rrt_${group.id}" readonly
+                        style="background:#f3f4f6; font-weight:bold">
+                </div>
+                <div class="form-group">
+                    <label>Residual Level</label>
+                    <input type="text" id="act_rlvl_${group.id}" readonly
+                        style="background:#f3f4f6; font-weight:bold">
+                </div>
+            </div>
+            <button class="btn btn-primary" onclick="addActivity(${group.id})">+ Add Activity</button>
+            <div id="activities_${group.id}" style="margin-top:10px; font-size:12px; color:#6b7280"></div>
+        `;
+        container.appendChild(groupDiv);
+    }
+
+    function calcScore(type, groupId) {
+        const prefix = type === 'initial' ? 'act_i' : 'act_r';
+        const l = parseFloat(document.getElementById(`${prefix}l_${groupId}`).value) || 0;
+        const s = parseFloat(document.getElementById(`${prefix}s_${groupId}`).value) || 0;
+        const score = l * s;
+        let level = '';
+        if (score === 1) level = 'SR';
+        else if (score <= 4) level = 'R';
+        else if (score <= 8) level = 'M';
+        else if (score <= 12) level = 'T';
+        else if (score > 12) level = 'E';
+
+        const rtField = type === 'initial' ? `act_irt_${groupId}` : `act_rrt_${groupId}`;
+        const lvlField = type === 'initial' ? `act_ilvl_${groupId}` : `act_rlvl_${groupId}`;
+
+        if (score > 0) {
+            document.getElementById(rtField).value = score;
+            document.getElementById(lvlField).value = level;
+        }
+    }
+
+    async function addActivity(groupId) {
+        const payload = {
+            group: groupId,
+            activity_name: document.getElementById(`act_name_${groupId}`).value,
+            activity_type: document.getElementById(`act_type_${groupId}`).value,
+            activity_details: {
+                potential_hazards: document.getElementById(`act_hazards_${groupId}`).value,
+                risk_impact: document.getElementById(`act_impact_${groupId}`).value,
+                control_category: document.getElementById(`act_control_cat_${groupId}`).value,
+                control_measures: document.getElementById(`act_control_${groupId}`).value,
+            },
+            initial_likelihood: parseInt(document.getElementById(`act_il_${groupId}`).value),
+            initial_severity: parseInt(document.getElementById(`act_is_${groupId}`).value),
+            residual_likelihood: parseInt(document.getElementById(`act_rl_${groupId}`).value),
+            residual_severity: parseInt(document.getElementById(`act_rs_${groupId}`).value),
+        };
+
+        if (!payload.activity_name || !payload.initial_likelihood || !payload.residual_likelihood) {
+            showMsg(false, 'Activity name and all risk scores are required');
+            return;
+        }
+
+        const res = await apiFetch('/hira/activities/', {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+            const actDiv = document.getElementById(`activities_${groupId}`);
+            actDiv.innerHTML += `
+                <div style="padding:6px 10px; background:#f0fdf4; border-radius:4px; margin-top:6px">
+                    ✅ ${data.activity_name} —
+                    Initial Rt: ${data.initial_score} (${data.initial_level}) |
+                    Residual Rt: ${data.residual_score} (${data.residual_level}) |
+                    Acceptable: ${data.residual_acceptable ? 'Yes' : 'No'}
+                </div>
+            `;
+            showMsg(true, `Activity "${data.activity_name}" added`);
+        } else {
+            showMsg(false, JSON.stringify(data));
+        }
+    }
+
+    function showMsg(success, msg) {
+        const el = document.getElementById(success ? 'success-msg' : 'error-msg');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 4000);
+    }
+
+    loadProjects();
+</script>
+{% endblock %}

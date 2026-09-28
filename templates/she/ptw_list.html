@@ -1,0 +1,411 @@
+{% extends 'she/base.html' %}
+
+{% block content %}
+<div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center">
+        <h2>Work Permits</h2>
+        <div>
+            <button class="btn btn-secondary" onclick="window.location.href='/dashboard/'">
+                ← Back
+            </button>
+            <span id="create-btn"></span>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div id="error-msg" class="alert alert-error" style="display:none"></div>
+    <div id="success-msg" class="alert alert-success" style="display:none"></div>
+    <table>
+        <thead>
+            <tr>
+                <th>Document No.</th>
+                <th>Permit Type</th>
+                <th>Work Location</th>
+                <th>Work Date</th>
+                <th>Status</th>
+                <th>Submitted By</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="ptw-table-body">
+            <tr><td colspan="7" style="text-align:center; color:#9ca3af">Loading...</td></tr>
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    requireAuth();
+    const role = getUser().role;
+
+    // show create button only for Foreman
+    if (role === 'foreman') {
+        document.getElementById('create-btn').innerHTML =
+            `<button class="btn btn-primary" onclick="window.location.href='/ptw/create/'">
+                + New Permit
+            </button>`;
+    }
+
+    const permitTypeLabels = {
+        'working_at_height': 'Working at Height',
+        'confined_space':    'Confined Space',
+        'fire_explosive':    'Fire / Explosive',
+        'lifting':           'Lifting',
+        'tower_crane':       'Tower Crane',
+    };
+
+    function getBadge(status) {
+        return `<span class="badge badge-${status}">${status}</span>`;
+    }
+
+    function getActions(permit) {
+        let actions = '';
+
+        actions += `<button class="btn btn-secondary" onclick="viewPermit(${permit.id})">View</button>`;
+
+        if (role === 'foreman') {
+            if (permit.status === 'draft') {
+                actions += `<button class="btn btn-primary" onclick="submitPermit(${permit.id})">Submit</button>`;
+            }
+            if (permit.status === 'approved') {
+                actions += `<button class="btn btn-secondary" onclick="closePermit(${permit.id})">Close</button>`;
+            }
+        }
+
+        if (role === 'she_officer' && permit.status === 'submitted') {
+            actions += `<button class="btn btn-secondary" onclick="endorsePermit(${permit.id})">Endorse</button>`;
+            actions += `<button class="btn btn-danger" onclick="rejectPermit(${permit.id})">Reject</button>`;
+        }
+
+        if (['site_manager', 'project_manager'].includes(role) && permit.status === 'endorsed') {
+            actions += `<button class="btn btn-secondary" onclick="approvePermit(${permit.id})">Approve</button>`;
+            actions += `<button class="btn btn-danger" onclick="rejectPermit(${permit.id})">Reject</button>`;
+        }
+
+        if (['site_manager', 'project_manager'].includes(role) && permit.status === 'approved') {
+            actions += `<button class="btn btn-warning" onclick="retractPermit(${permit.id})">Retract</button>`;
+        }
+
+        return actions || '—';
+    }
+
+    async function loadPermits() {
+        const res = await apiFetch('/ptw/');
+        if (res.ok) {
+            const data = await res.json();
+            const tbody = document.getElementById('ptw-table-body');
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:#9ca3af">No work permits found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = data.map(p => `
+                <tr>
+                    <td>${p.document_number || '—'}</td>
+                    <td>${permitTypeLabels[p.permit_type] || p.permit_type}</td>
+                    <td>${p.work_location}</td>
+                    <td>${p.work_date}</td>
+                    <td>${getBadge(p.status)}</td>
+                    <td>${p.submitted_by || '—'}</td>
+                    <td>${getActions(p)}</td>
+                </tr>
+            `).join('');
+        }
+    }
+
+    async function viewPermit(id) {
+        const res = await apiFetch(`/ptw/${id}/`);
+        if (!res.ok) return;
+        const p = await res.json();
+
+        const permitTypeLabels = {
+            'working_at_height': 'Working at Height',
+            'confined_space':    'Confined Space',
+            'fire_explosive':    'Fire / Explosive',
+            'lifting':           'Lifting',
+            'tower_crane':       'Tower Crane',
+        };
+
+        const checklistHtml = Object.entries(p.safety_checklist || {}).map(([key, val]) => `
+            <tr>
+                <td style="font-size:12px">${key}.</td>
+                <td style="font-size:12px">${val ? '✅ Ya' : '❌ Tidak'}</td>
+            </tr>
+        `).join('');
+
+        const ppeHtml = Object.entries(p.ppe_checklist || {}).map(([key, val]) => `
+            <span style="font-size:12px; margin-right:12px">
+                ${val ? '✅' : '☐'} ${key.replace(/_/g, ' ')}
+            </span>
+        `).join('');
+
+        const approvalChain = [
+            { label: 'Submitted by', user: p.submitted_by, time: p.submitted_at },
+            { label: 'Endorsed by', user: p.endorsed_by, time: p.endorsed_at },
+            { label: 'Approved by', user: p.approved_by, time: p.approved_at },
+            { label: 'Retracted by', user: p.retracted_by, time: p.retracted_at },
+            { label: 'Closed by', user: p.closed_by, time: p.closed_at },
+        ].filter(a => a.user);
+
+        const chainHtml = approvalChain.map(a => `
+            <div style="display:flex; gap:12px; padding:8px 0; border-bottom:1px solid #f3f4f6">
+                <div style="min-width:120px; font-size:11px; color:#6b7280">${a.label}</div>
+                <div style="font-size:12px; font-weight:bold">${a.user}</div>
+                <div style="font-size:11px; color:#9ca3af">${a.time ? new Date(a.time).toLocaleString() : '—'}</div>
+            </div>
+        `).join('');
+
+        document.getElementById('ptw-modal-content').innerHTML = `
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:20px">
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Document Number</div>
+                    <div style="font-size:13px; font-weight:bold">${p.document_number || '—'}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Status</div>
+                    <div>${getBadge(p.status)}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Permit Type</div>
+                    <div style="font-size:13px">${permitTypeLabels[p.permit_type] || p.permit_type}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Work Date</div>
+                    <div style="font-size:13px">${p.work_date}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Work Location</div>
+                    <div style="font-size:13px">${p.work_location}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Work Description</div>
+                    <div style="font-size:13px">${p.work_description}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Person in Charge</div>
+                    <div style="font-size:13px">${p.person_in_charge}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Workers</div>
+                    <div style="font-size:13px">${p.worker_count} people</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">Work Hours</div>
+                    <div style="font-size:13px">${p.work_start} — ${p.work_end}</div>
+                </div>
+                <div>
+                    <div style="font-size:11px; color:#6b7280">HIRA Activity</div>
+                    <div style="font-size:13px">${p.hira_activity_name} 
+                        (Residual Rt: ${p.hira_residual_score} — ${p.hira_residual_level})</div>
+                </div>
+                ${p.remarks ? `
+                <div style="grid-column:span 2">
+                    <div style="font-size:11px; color:#6b7280">Remarks</div>
+                    <div style="font-size:13px; color:#dc2626">${p.remarks}</div>
+                </div>` : ''}
+                ${p.post_work_evaluation ? `
+                <div style="grid-column:span 2">
+                    <div style="font-size:11px; color:#6b7280">Post Work Evaluation</div>
+                    <div style="font-size:13px">${p.post_work_evaluation}</div>
+                </div>` : ''}
+            </div>
+
+            <h4 style="font-size:13px; color:#1a3a2a; margin-bottom:8px">Approval Chain</h4>
+            <div style="margin-bottom:20px">${chainHtml || '<p style="font-size:12px; color:#9ca3af">No actions yet</p>'}</div>
+
+            <h4 style="font-size:13px; color:#1a3a2a; margin-bottom:8px">Safety Checklist</h4>
+            <table style="margin-bottom:16px; width:auto">
+                <tbody>${checklistHtml}</tbody>
+            </table>
+
+            <h4 style="font-size:13px; color:#1a3a2a; margin-bottom:8px">PPE</h4>
+            <div>${ppeHtml}</div>
+
+            ${p.inspection_photo ? `
+            <div style="margin-top:16px">
+                <h4 style="font-size:13px; color:#1a3a2a; margin-bottom:8px">Inspection Photo</h4>
+                <img src="${p.inspection_photo}" style="max-width:300px; border-radius:4px; border:1px solid #e5e7eb">
+            </div>` : ''}
+        `;
+        // fetch audit log
+        const auditRes = await apiFetch(`/audit/?entity_type=work_permit&entity_id=${id}`);
+        let auditHtml = '<p style="font-size:12px; color:#9ca3af">No audit records yet</p>';
+        if (auditRes.ok) {
+            const logs = await auditRes.json();
+            if (logs.length > 0) {
+                auditHtml = logs.map(log => `
+                    <div style="display:flex; gap:12px; padding:8px 0; border-bottom:1px solid #f3f4f6; align-items:flex-start">
+                        <div style="min-width:100px">
+                            <span class="badge badge-${log.action}"
+                                style="background:#f0fdf4; color:#166534; font-size:10px">
+                                ${log.action}
+                            </span>
+                        </div>
+                        <div style="flex:1">
+                            <div style="font-size:12px; font-weight:bold">${log.performed_by}</div>
+                            ${log.remarks ? `<div style="font-size:11px; color:#dc2626">${log.remarks}</div>` : ''}
+                        </div>
+                        <div style="font-size:11px; color:#9ca3af; white-space:nowrap">
+                            ${new Date(log.timestamp).toLocaleString()}
+                        </div>
+                    </div>
+                `).join('');
+            }
+        }
+
+        document.getElementById('ptw-modal-content').innerHTML += `
+            <h4 style="font-size:13px; color:#1a3a2a; margin:20px 0 8px">Audit Trail</h4>
+            <div>${auditHtml}</div>
+        `;
+        
+        document.getElementById('ptw-detail-modal').style.display = 'flex';
+    }    
+
+    async function submitPermit(id) {
+        if (!confirm('Submit this permit for SHE Officer review?')) return;
+        const res = await apiFetch(`/ptw/${id}/submit/`, { method: 'POST' });
+        const data = await res.json();
+        showMsg(res.ok, data.message || data.error);
+        if (res.ok) loadPermits();
+    }
+
+    async function endorsePermit(id) {
+        // show photo upload modal
+        const modal = document.getElementById('photo-modal');
+        modal.style.display = 'flex';
+        modal.dataset.permitId = id;
+    }
+
+    async function submitEndorse() {
+        const id = document.getElementById('photo-modal').dataset.permitId;
+        const photoInput = document.getElementById('endorse-photo');
+
+        if (!photoInput.files[0]) {
+            alert('Please select an inspection photo first');
+            return;
+        }
+
+        // upload photo to dedicated endpoint
+        const formData = new FormData();
+        formData.append('inspection_photo', photoInput.files[0]);
+
+        const uploadRes = await fetch(`${API}/ptw/${id}/upload_photo/`, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${getToken()}` },
+            body: formData
+        });
+
+        if (!uploadRes.ok) {
+            showMsg(false, 'Photo upload failed');
+            return;
+        }
+
+        // then endorse
+        const res = await apiFetch(`/ptw/${id}/endorse/`, { method: 'POST' });
+        const data = await res.json();
+        closePhotoModal();
+        showMsg(res.ok, data.message || data.error);
+        if (res.ok) loadPermits();
+    }
+
+    function closePhotoModal() {
+        document.getElementById('photo-modal').style.display = 'none';
+        document.getElementById('endorse-photo').value = '';
+    }
+
+    async function approvePermit(id) {
+        if (!confirm('Approve this work permit?')) return;
+        const res = await apiFetch(`/ptw/${id}/approve/`, { method: 'POST' });
+        const data = await res.json();
+        showMsg(res.ok, data.message || data.error);
+        if (res.ok) loadPermits();
+    }
+
+    async function rejectPermit(id) {
+        const remarks = prompt('Enter rejection remarks:');
+        if (remarks === null) return;
+        const res = await apiFetch(`/ptw/${id}/reject/`, {
+            method: 'POST',
+            body: JSON.stringify({ remarks })
+        });
+        const data = await res.json();
+        showMsg(res.ok, data.message || data.error);
+        if (res.ok) loadPermits();
+    }
+
+    async function retractPermit(id) {
+        const remarks = prompt('Reason for retraction:');
+        if (remarks === null) return;
+        const res = await apiFetch(`/ptw/${id}/retract/`, {
+            method: 'POST',
+            body: JSON.stringify({ remarks })
+        });
+        const data = await res.json();
+        showMsg(res.ok, data.message || data.error);
+        if (res.ok) loadPermits();
+    }
+
+    async function closePermit(id) {
+        const evaluation = prompt('Post work evaluation:');
+        if (evaluation === null) return;
+        const res = await apiFetch(`/ptw/${id}/close/`, {
+            method: 'POST',
+            body: JSON.stringify({ post_work_evaluation: evaluation })
+        });
+        const data = await res.json();
+        showMsg(res.ok, data.message || data.error);
+        if (res.ok) loadPermits();
+    }
+
+    function showMsg(success, msg) {
+        const el = document.getElementById(success ? 'success-msg' : 'error-msg');
+        el.textContent = msg;
+        el.style.display = 'block';
+        setTimeout(() => el.style.display = 'none', 4000);
+    }
+
+    loadPermits();
+</script>
+
+<!-- PTW Detail Modal -->
+<div id="ptw-detail-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+     background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center">
+    <div style="background:white; border-radius:8px; padding:24px; width:80%; max-width:900px;
+                max-height:85vh; overflow-y:auto">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+            <h3 style="font-size:15px; color:#1a3a2a">Work Permit Detail</h3>
+            <button class="btn btn-secondary" 
+                    onclick="document.getElementById('ptw-detail-modal').style.display='none'">
+                Close
+            </button>
+        </div>
+        <div id="ptw-modal-content"></div>
+    </div>
+</div>
+
+<!-- Photo Upload Modal -->
+<div id="photo-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+     background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center">
+    <div style="background:white; border-radius:8px; padding:24px; width:400px">
+        <h3 style="font-size:15px; color:#1a3a2a; margin-bottom:16px">
+            Upload Inspection Photo
+        </h3>
+        <p style="font-size:12px; color:#6b7280; margin-bottom:16px">
+            Photo evidence of your on-site inspection is required before endorsement.
+        </p>
+        <div class="form-group">
+            <label>Select Photo</label>
+            <input type="file" id="endorse-photo" accept="image/*">
+        </div>
+        <div style="display:flex; gap:8px; margin-top:16px">
+            <button class="btn btn-primary" onclick="submitEndorse()">
+                Upload & Endorse
+            </button>
+            <button class="btn btn-secondary" onclick="closePhotoModal()">
+                Cancel
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
